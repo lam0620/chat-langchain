@@ -2,7 +2,7 @@
 import logging
 import os
 import re
-from parser import langchain_docs_extractor
+from parser_html import langchain_docs_extractor
 
 import weaviate
 from bs4 import BeautifulSoup, SoupStrainer
@@ -11,18 +11,20 @@ from langchain.indexes import SQLRecordManager
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.utils.html import (PREFIXES_TO_IGNORE_REGEX,
                                   SUFFIXES_TO_IGNORE_REGEX)
-from langchain.vectorstores.weaviate import Weaviate
+#from langchain.vectorstores.weaviate import Weaviate
 
 from _index import index
 from chain import get_embeddings_model
-from constants import WEAVIATE_DOCS_INDEX_NAME
+from constants import *
+
+from langchain.vectorstores.pgvector import PGVector
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-WEAVIATE_URL = os.environ["WEAVIATE_URL"]
-WEAVIATE_API_KEY = os.environ["WEAVIATE_API_KEY"]
-RECORD_MANAGER_DB_URL = os.environ["RECORD_MANAGER_DB_URL"]
+# WEAVIATE_URL = os.environ["WEAVIATE_URL"]
+# WEAVIATE_API_KEY = os.environ["WEAVIATE_API_KEY"]
+# RECORD_MANAGER_DB_URL = os.environ["RECORD_MANAGER_DB_URL"]
 
 
 def metadata_extractor(meta: dict, soup: BeautifulSoup) -> dict:
@@ -118,22 +120,33 @@ def ingest_docs():
         if "title" not in doc.metadata:
             doc.metadata["title"] = ""
 
-    client = weaviate.Client(
-        url=WEAVIATE_URL,
-        auth_client_secret=weaviate.AuthApiKey(api_key=WEAVIATE_API_KEY),
-    )
-    embedding = get_embeddings_model()
-    vectorstore = Weaviate(
-        client=client,
-        index_name=WEAVIATE_DOCS_INDEX_NAME,
-        text_key="text",
-        embedding=embedding,
-        by_text=False,
-        attributes=["source", "title"],
-    )
+    # client = weaviate.Client(
+    #     url=WEAVIATE_URL,
+    #     auth_client_secret=weaviate.AuthApiKey(api_key=WEAVIATE_API_KEY),
+    # )
+    # embedding = get_embeddings_model()
+    # vectorstore = Weaviate(
+    #     client=client,
+    #     index_name=WEAVIATE_DOCS_INDEX_NAME,
+    #     text_key="text",
+    #     embedding=embedding,
+    #     by_text=False,
+    #     attributes=["source", "title"],
+    # )
 
+    # Get embedding
+    embedding = get_embeddings_model()
+    
+
+    # Init the Vector store for document embedding
+    vectorstore = PGVector(
+            connection_string=EMBEDDING_DB_URL,
+            collection_name=COLLECTION_NAME,
+            embedding_function=embedding
+        )
+    
     record_manager = SQLRecordManager(
-        f"weaviate/{WEAVIATE_DOCS_INDEX_NAME}", db_url=RECORD_MANAGER_DB_URL
+        f"weaviate/{PG_DOCS_INDEX_NAME}", db_url=RECORD_MANAGER_DB_URL
     )
     record_manager.create_schema()
 
@@ -147,10 +160,10 @@ def ingest_docs():
     )
 
     logger.info(f"Indexing stats: {indexing_stats}")
-    num_vecs = client.query.aggregate(WEAVIATE_DOCS_INDEX_NAME).with_meta_count().do()
-    logger.info(
-        f"LangChain now has this many vectors: {num_vecs}",
-    )
+    # num_vecs = client.query.aggregate(WEAVIATE_DOCS_INDEX_NAME).with_meta_count().do()
+    # logger.info(
+    #     f"LangChain now has this many vectors: {num_vecs}",
+    # )
 
 
 if __name__ == "__main__":
